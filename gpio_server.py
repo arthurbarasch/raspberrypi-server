@@ -22,7 +22,7 @@ GPIO.setmode(GPIO.BCM)
 GPIO.setwarnings(False)
 
 # Valid GPIO pins for Raspberry Pi Zero W
-VALID_PINS = [2, 3, 4, 7, 8, 9, 10, 11, 14, 15, 17, 18, 22, 23, 24, 25, 27]
+VALID_PINS = [2, 3, 4, 7, 8, 9, 10, 11, 12, 14, 15, 17, 18, 22, 23, 24, 25, 27]
 
 # PWM frequency in Hz (higher = smoother but more CPU usage)
 PWM_FREQUENCY = 1000
@@ -31,6 +31,21 @@ PWM_FREQUENCY = 1000
 pin_states = {}  # For digital: bool, for PWM: duty cycle (0-100)
 pin_modes = {}  # 'output', 'input', or 'pwm'
 pwm_instances = {}  # Store PWM objects for cleanup
+
+# L298N Motor Driver Configuration
+# Left motor (Motor A) - controls left wheels
+MOTOR_LEFT = {
+    'enable': 18,  # ENA - PWM speed control
+    'in1': 17,     # IN1 - Forward
+    'in2': 27      # IN2 - Backward
+}
+
+# Right motor (Motor B) - controls right wheels
+MOTOR_RIGHT = {
+    'enable': 12,  # ENB - PWM speed control
+    'in3': 22,     # IN3 - Forward
+    'in4': 23      # IN4 - Backward
+}
 
 def cleanup_pwm(pin):
     """Stop and cleanup PWM on a pin if it exists"""
@@ -221,6 +236,143 @@ def health():
         'configured_pins': len(pin_modes),
         'pins': list(pin_modes.keys())
     })
+
+# =============================================================================
+# L298N Motor Control Endpoints
+# =============================================================================
+
+def set_motor(motor_config, speed):
+    """
+    Control a single motor connected to L298N driver.
+
+    Args:
+        motor_config: MOTOR_LEFT or MOTOR_RIGHT configuration dict
+        speed: -100 to 100 (negative = backward, positive = forward, 0 = stop)
+    """
+    # Determine direction pins based on motor
+    if motor_config == MOTOR_LEFT:
+        in_fwd = motor_config['in1']
+        in_bwd = motor_config['in2']
+    else:
+        in_fwd = motor_config['in3']
+        in_bwd = motor_config['in4']
+
+    # Setup direction pins as outputs
+    GPIO.setup(in_fwd, GPIO.OUT)
+    GPIO.setup(in_bwd, GPIO.OUT)
+
+    # Set direction based on speed sign
+    if speed > 0:
+        # Forward
+        GPIO.output(in_fwd, GPIO.HIGH)
+        GPIO.output(in_bwd, GPIO.LOW)
+    elif speed < 0:
+        # Backward
+        GPIO.output(in_fwd, GPIO.LOW)
+        GPIO.output(in_bwd, GPIO.HIGH)
+    else:
+        # Stop (brake)
+        GPIO.output(in_fwd, GPIO.LOW)
+        GPIO.output(in_bwd, GPIO.LOW)
+
+    # Set speed via PWM (use absolute value)
+    abs_speed = min(abs(speed), 100)
+    enable_pin = motor_config['enable']
+    setup_pin_pwm(enable_pin)
+    pwm_instances[enable_pin].ChangeDutyCycle(abs_speed)
+    pin_states[enable_pin] = abs_speed
+
+@app.route('/motor/drive', methods=['POST'])
+def motor_drive():
+    """
+    Drive the RC car by setting left and right motor speeds.
+
+    JSON body:
+        left: -100 to 100 (left motor speed, negative = backward)
+        right: -100 to 100 (right motor speed, negative = backward)
+
+    Examples:
+        Forward: {"left": 70, "right": 70}
+        Backward: {"left": -70, "right": -70}
+        Turn right: {"left": 70, "right": 30}
+        Spin left: {"left": -50, "right": 50}
+    """
+    try:
+        data = request.get_json()
+        left = data.get('left', 0)
+        right = data.get('right', 0)
+
+        # Clamp values to valid range
+        left = max(-100, min(100, int(left)))
+        right = max(-100, min(100, int(right)))
+
+        # Set both motors
+        set_motor(MOTOR_LEFT, left)
+        set_motor(MOTOR_RIGHT, right)
+
+        logger.info(f"Motor drive: left={left}, right={right}")
+
+        return jsonify({
+            'success': True,
+            'left': left,
+            'right': right
+        })
+
+    except Exception as e:
+        logger.error(f"Error driving motors: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/motor/stop', methods=['POST'])
+def motor_stop():
+    """Emergency stop - immediately stops all motors"""
+    try:
+        # Stop left motor
+        GPIO.setup(MOTOR_LEFT['in1'], GPIO.OUT)
+        GPIO.setup(MOTOR_LEFT['in2'], GPIO.OUT)
+        GPIO.output(MOTOR_LEFT['in1'], GPIO.LOW)
+        GPIO.output(MOTOR_LEFT['in2'], GPIO.LOW)
+
+        # Stop right motor
+        GPIO.setup(MOTOR_RIGHT['in3'], GPIO.OUT)
+        GPIO.setup(MOTOR_RIGHT['in4'], GPIO.OUT)
+        GPIO.output(MOTOR_RIGHT['in3'], GPIO.LOW)
+        GPIO.output(MOTOR_RIGHT['in4'], GPIO.LOW)
+
+        # Set PWM to 0 on enable pins
+        for enable_pin in [MOTOR_LEFT['enable'], MOTOR_RIGHT['enable']]:
+            if enable_pin in pwm_instances:
+                pwm_instances[enable_pin].ChangeDutyCycle(0)
+                pin_states[enable_pin] = 0
+
+        logger.info("Motors stopped")
+
+        return jsonify({
+            'success': True,
+            'status': 'stopped'
+        })
+
+    except Exception as e:
+        logger.error(f"Error stopping motors: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/motor/status', methods=['GET'])
+def motor_status():
+    """Get current motor status"""
+    try:
+        return jsonify({
+            'success': True,
+            'left': {
+                'enable_pin': MOTOR_LEFT['enable'],
+                'speed': pin_states.get(MOTOR_LEFT['enable'], 0)
+            },
+            'right': {
+                'enable_pin': MOTOR_RIGHT['enable'],
+                'speed': pin_states.get(MOTOR_RIGHT['enable'], 0)
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error getting motor status: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 def cleanup():
     """Cleanup GPIO on shutdown"""
