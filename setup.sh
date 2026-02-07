@@ -4,6 +4,7 @@ set -e
 echo "=== Raspberry Pi GPIO Server Setup ==="
 
 # Create virtual environment
+echo "Creating virtual environment (this may take a while)..."
 cd ~/raspberrypi-server
 python3 -m venv venv
 
