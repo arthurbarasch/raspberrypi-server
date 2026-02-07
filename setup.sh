@@ -3,10 +3,13 @@ set -e
 
 echo "=== Raspberry Pi GPIO Server Setup ==="
 
+# Create virtual environment
+cd ~/raspberrypi-server
+python3 -m venv venv
+
 # Install Python dependencies
 echo "Installing Python dependencies..."
-cd ~/raspberrypi-server
-pip3 install -r requirements.txt
+./venv/bin/pip3 install -r requirements.txt
 
 # Create systemd service file
 echo "Creating systemd service..."
@@ -19,7 +22,7 @@ After=network.target
 Type=simple
 User=arthur
 WorkingDirectory=/home/arthur/raspberrypi-server
-ExecStart=/usr/bin/python3 /home/arthur/raspberrypi-server/gpio_server.py
+ExecStart=/home/arthur/raspberrypi-server/venv/bin/python3 /home/arthur/raspberrypi-server/gpio_server.py
 Restart=always
 RestartSec=10
 
