@@ -5,11 +5,13 @@ This server runs on your Raspberry Pi Zero W to enable remote GPIO control via H
 ## Installation on Raspberry Pi
 
 1. Copy this folder to your Raspberry Pi Zero W:
+
    ```bash
    scp -r raspberry-pi-server pi@raspberrypi.local:~/
    ```
 
 2. SSH into your Raspberry Pi:
+
    ```bash
    ssh pi@raspberrypi.local
    ```
@@ -23,6 +25,7 @@ This server runs on your Raspberry Pi Zero W to enable remote GPIO control via H
 ## Running the Server
 
 ### Manual Start
+
 ```bash
 python3 gpio_server.py
 ```
@@ -30,11 +33,13 @@ python3 gpio_server.py
 ### Run as a Service (Auto-start on boot)
 
 1. Create a systemd service file:
+
    ```bash
    sudo nano /etc/systemd/system/gpio-server.service
    ```
 
 2. Add the following content:
+
    ```ini
    [Unit]
    Description=GPIO Control Server
@@ -42,9 +47,9 @@ python3 gpio_server.py
 
    [Service]
    Type=simple
-   User=pi
-   WorkingDirectory=/home/pi/raspberry-pi-server
-   ExecStart=/usr/bin/python3 /home/pi/raspberry-pi-server/gpio_server.py
+   User=arthur
+   WorkingDirectory=/home/arthur/raspberrypi-server
+   ExecStart=/usr/bin/python3 /home/arthur/raspberrypi-server/gpio_server.py
    Restart=always
    RestartSec=10
 
@@ -53,6 +58,7 @@ python3 gpio_server.py
    ```
 
 3. Enable and start the service:
+
    ```bash
    sudo systemctl daemon-reload
    sudo systemctl enable gpio-server
@@ -67,6 +73,7 @@ python3 gpio_server.py
 ## API Endpoints
 
 ### Set GPIO Pin State
+
 ```bash
 POST http://raspberrypi.local:3001/gpio/set
 Content-Type: application/json
@@ -78,11 +85,13 @@ Content-Type: application/json
 ```
 
 ### Get GPIO Status
+
 ```bash
 GET http://raspberrypi.local:3001/gpio/status
 ```
 
 ### Set GPIO Mode
+
 ```bash
 POST http://raspberrypi.local:3001/gpio/mode
 Content-Type: application/json
@@ -94,11 +103,13 @@ Content-Type: application/json
 ```
 
 ### Health Check
+
 ```bash
 GET http://raspberrypi.local:3001/health
 ```
 
 ## Valid GPIO Pins (BCM Numbering)
+
 2, 3, 4, 7, 8, 9, 10, 11, 14, 15, 17, 18, 22, 23, 24, 25, 27
 
 ## Troubleshooting
